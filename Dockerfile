@@ -24,14 +24,11 @@ RUN apt-get update -qq && \
 COPY package*.json ./
 RUN npm ci --include=dev
 
-# Install NestJS CLI globally
-RUN npm install -g @nestjs/cli
-
 # Copy application code
 COPY . .
 
-# Build the application
-RUN npm run build
+# Build the application using the local NestJS CLI
+RUN npx nest build
 
 # Final stage for app image
 FROM base
