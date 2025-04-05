@@ -1,54 +1,62 @@
-FROM node:18-alpine As build
+# syntax = docker/dockerfile:1
 
-# Create app directory
+# Adjust NODE_VERSION as desired
+ARG NODE_VERSION=18.0.0
+FROM node:${NODE_VERSION}-slim AS base
+
+LABEL fly_launch_runtime="NestJS"
+
+# NestJS app lives here
 WORKDIR /app
 
-# Copy package files and install dependencies
-COPY package*.json ./
-RUN npm ci
+# Set production environment
+ENV NODE_ENV="production"
 
-# Copy source files
+# Throw-away build stage to reduce size of final image
+FROM base AS build
+
+# Install packages needed to build node modules
+RUN apt-get update -qq && \
+    apt-get install --no-install-recommends -y build-essential node-gyp pkg-config python-is-python3
+
+# Install node modules
+COPY package-lock.json package.json ./
+RUN npm ci --include=dev
+
+# Copy application code
 COPY . .
 
 # Build the application
 RUN npm run build
 
-# Remove development dependencies
-RUN npm ci --only=production
+# Final stage for app image
+FROM base
 
-FROM node:18-alpine As production
-
-# Set NODE_ENV
-ENV NODE_ENV production
-
-# Create app directory
-WORKDIR /app
-
-# Copy from build stage
+# Copy built application
 COPY --from=build /app/node_modules ./node_modules
 COPY --from=build /app/dist ./dist
 COPY --from=build /app/package*.json ./
 
 # Install Puppeteer dependencies for WhatsApp Web
-RUN apk add --no-cache \
+RUN apt-get update -qq && \
+    apt-get install --no-install-recommends -y \
     chromium \
-    nss \
-    freetype \
-    freetype-dev \
-    harfbuzz \
+    fonts-freefont-ttf \
     ca-certificates \
-    ttf-freefont
+    libfreetype6 \
+    libharfbuzz0b \
+    libnss3
 
 # Tell Puppeteer to use installed Chrome instead of downloading it
 ENV PUPPETEER_SKIP_CHROMIUM_DOWNLOAD=true
-ENV PUPPETEER_EXECUTABLE_PATH=/usr/bin/chromium-browser
+ENV PUPPETEER_EXECUTABLE_PATH=/usr/bin/chromium
 
-# Create directory for WhatsApp sessions
+# Create directory for WhatsApp sessions and public folder
 RUN mkdir -p /app/whatsapp-sessions
 RUN mkdir -p /app/public
 
-# Run as non-root user
-USER node
+# Expose the port
+EXPOSE 8080
 
 # Start the application
 CMD ["node", "dist/main"]
