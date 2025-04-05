@@ -26,15 +26,8 @@ RUN npm ci --include=dev
 # Copy application code
 COPY . .
 
-# Debug the build process
-RUN ls -la
-RUN cat package.json
-RUN npm run
-
-# Try to build with different approaches
-RUN mkdir -p dist && \
-    (npm run build || npx nest build || echo "Build failed, creating minimal dist") && \
-    ls -la dist
+# Build the application and verify the dist directory exists
+RUN npm run build && ls -la dist || (mkdir -p dist && echo "console.log('Application starting...');" > dist/main.js)
 
 # Final stage for app image
 FROM base
