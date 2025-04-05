@@ -2,128 +2,98 @@ import { Injectable, OnModuleInit, Logger, LoggerService } from '@nestjs/common'
 import { ConfigService } from '@nestjs/config';
 import { Client, LocalAuth, Message } from 'whatsapp-web.js';
 import * as qrcode from 'qrcode-terminal';
-// Fix the import statement
 import * as qrcodeLib from 'qrcode'; // Rename to avoid conflict
 import { EmailService } from '../email/email.service';
 import { responses, interestKeywords } from '../data/responses';
 
-// Create a silent logger that doesn't output to console
-class SilentLogger implements LoggerService {
-  log(message: any, ...optionalParams: any[]) {}
-  error(message: any, ...optionalParams: any[]) {}
-  warn(message: any, ...optionalParams: any[]) {}
-  debug(message: any, ...optionalParams: any[]) {}
-  verbose(message: any, ...optionalParams: any[]) {}
-}
-
-// Estados de la conversación
+// Define the ConversationState enum
 enum ConversationState {
   MENU_PRINCIPAL = 'MENU_PRINCIPAL',
   NOMBRE_PACIENTE = 'NOMBRE_PACIENTE',
   NUMERO_WHATSAPP = 'NUMERO_WHATSAPP',
-  CORREO_PACIENTE = 'CORREO_PACIENTE',
+  CORREO_PACIENTE = 'CORREO_PACIENTE'
 }
 
-// Límite de intentos inválidos
+// Define constants
 const MAX_INTENTOS_INVALIDOS = 3;
-
-// Regex para validación
-const PHONE_REGEX = /^\+\d{1,3}\s?\d{5,12}$/;
-const EMAIL_REGEX = /^[^\s@]+@[^\s@]+\.[^\s@]+$/;
+const PHONE_REGEX = /^\+?[0-9]{8,15}$/;
+const EMAIL_REGEX = /^[a-zA-Z0-9._%+-]+@[a-zA-Z0-9.-]+\.[a-zA-Z]{2,}$/;
 
 @Injectable()
 export class WhatsappService implements OnModuleInit {
-  // Change the type to allow null values
+  // Use the NestJS Logger instead of SilentLogger
+  private readonly logger = new Logger(WhatsappService.name);
   private client: Client | null;
   private userStates: Map<string, any> = new Map();
-  // Replace the standard logger with the silent logger
-  private readonly logger = new SilentLogger();
   private reconnectTimer: NodeJS.Timeout | null = null;
 
   constructor(
     private configService: ConfigService,
     private emailService: EmailService,
   ) {
-    // Create client with more robust session handling
-    this.client = new Client({
-      authStrategy: new LocalAuth({
-        dataPath: './whatsapp-sessions',
-        clientId: 'whatsapp-bot-main', // Use a consistent client ID instead of a timestamp
-      }),
-      puppeteer: {
-        args: ['--no-sandbox'],
-        // Add more puppeteer options to help with cleanup
-        handleSIGINT: false, // Let our app handle process termination
-      },
-    });
-
-    this.registerEventHandlers();
+    this.client = null;
+    // Log that the service is being constructed
+    this.logger.log('WhatsApp service is being constructed');
   }
+
+  // Add the missing registerEventHandlers method
   private registerEventHandlers() {
-    // Make sure client is not null before registering handlers
     if (!this.client) {
       this.logger.error('Cannot register event handlers: client is null');
       return;
     }
 
-    this.client.on('qr', (qr) => {
+    this.client.on('qr', async (qr) => {
+      this.logger.log('QR Code received');
+      // Display QR in terminal
       qrcode.generate(qr, { small: true });
-      this.logger.log('QR RECEIVED. Scan it with your WhatsApp app.');
-      this.sendQrCodeByEmail(qr);
-    });
-
-    this.client.on('disconnected', (reason) => {
-      this.logger.error(`Client was disconnected: ${reason}`);
-      
-      // Don't try to use this client instance anymore
-      this.client = null;
-      
-      // Clear any existing reconnection timer
-      if (this.reconnectTimer) {
-        clearTimeout(this.reconnectTimer);
-      }
-      
-      // Set a new reconnection timer with a longer delay
-      this.reconnectTimer = setTimeout(() => {
-        this.logger.log('Creating new client instance after disconnection...');
-        this.initializeClient();
-      }, 20000); // Wait 20 seconds before trying to reconnect
+      // Send QR code by email
+      await this.sendQrCodeByEmail(qr);
     });
 
     this.client.on('ready', () => {
-      this.logger.log('WhatsApp client is ready!');
+      this.logger.log('Client is ready!');
     });
 
-    this.client.on('message_create', (msg) => {
-      this.logger.log(`Message created: ${msg.body} from ${msg.from}`);
-    });
-
-    this.client.on('message_ack', (msg, ack) => {
-      this.logger.log(`Message acknowledgement: ${ack} for message: ${msg.body}`);
-    });
-
-    this.client.on('message', async (msg) => {
-      this.logger.log(`Message received: ${msg.body} from ${msg.from}, fromMe: ${msg.fromMe}`);
-      
-      if (msg.body) {
-        try {
-          this.logger.log(`Processing message: ${msg.body}`);
-          await this.handleMessage(msg);
-          this.logger.log(`Handled message: ${msg.body}`);
-        } catch (error: any) {
-          const errorMessage = error?.message || 'Unknown error';
-          const errorStack = error?.stack || '';
-          this.logger.error(`Error handling message: ${errorMessage}`, errorStack);
-        }
-      }
+    this.client.on('authenticated', () => {
+      this.logger.log('Client authenticated');
     });
 
     this.client.on('auth_failure', (msg) => {
       this.logger.error(`Authentication failure: ${msg}`);
+      // Schedule reconnection
+      this.reconnectTimer = setTimeout(() => {
+        this.logger.log('Retrying after auth failure...');
+        this.initializeClient();
+      }, 30000);
+    });
+
+    this.client.on('disconnected', (reason) => {
+      this.logger.warn(`Client disconnected: ${reason}`);
+      // Schedule reconnection
+      this.reconnectTimer = setTimeout(() => {
+        this.logger.log('Reconnecting after disconnect...');
+        this.initializeClient();
+      }, 30000);
+    });
+
+    this.client.on('message', async (msg) => {
+      // Ignore messages from groups and broadcast lists
+      if (msg.from.includes('g.us') || msg.from.includes('broadcast')) {
+        return;
+      }
+      await this.handleMessage(msg);
     });
   }
 
   async onModuleInit() {
+    this.logger.log('WhatsApp service initializing...');
+    
+    // Add a keep-alive mechanism to prevent the application from exiting
+    setInterval(() => {
+      this.logger.log('WhatsApp service is still running...');
+    }, 60000); // Log every minute to show the app is still alive
+    
     await this.initializeClient();
   }
 
