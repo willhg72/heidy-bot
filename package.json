@@ -5,7 +5,8 @@
   "scripts": {
     "start": "ts-node src/main.ts",
     "start:dev": "ts-node-dev --respawn src/main.ts",
-    "postinstall": "mkdir -p src/types"
+    "postinstall": "mkdir -p src/types",
+    "build": "nest build",
   },
   "keywords": [],
   "author": "",

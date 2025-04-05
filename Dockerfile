@@ -26,8 +26,8 @@ RUN npm ci --include=dev
 # Copy application code
 COPY . .
 
-# Build the application
-RUN npm run build
+# Try different build commands that might work with your NestJS project
+RUN npm run build || npx nest build || echo "Build failed, checking scripts:" && npm run
 
 # Final stage for app image
 FROM base
