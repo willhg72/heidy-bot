@@ -27,14 +27,15 @@ RUN npm ci --include=dev
 COPY . .
 
 # Build the application - add verbose logging to see what's happening
-RUN npm run build && ls -la dist || echo "Build failed, checking directory structure:" && ls -la
+RUN npm run build && ls -la dist || (echo "Build failed, checking directory structure:" && ls -la)
 
 # Final stage for app image
 FROM base
 
 # Copy built application
-COPY --from=build /app/node_modules ./node_modules
-COPY --from=build /app/dist ./dist || echo "Warning: dist directory not found"
+COPY --from=build /app/node_modules/ ./node_modules/
+# Fix the syntax for copying dist directory
+COPY --from=build /app/dist/ ./dist/
 COPY --from=build /app/package*.json ./
 
 # Install Puppeteer dependencies for WhatsApp Web
