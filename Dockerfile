@@ -26,15 +26,21 @@ RUN npm ci --include=dev
 # Copy application code
 COPY . .
 
-# Build the application - add verbose logging to see what's happening
-RUN npm run build && ls -la dist || (echo "Build failed, checking directory structure:" && ls -la)
+# Debug the build process
+RUN ls -la
+RUN cat package.json
+RUN npm run
+
+# Try to build with different approaches
+RUN mkdir -p dist && \
+    (npm run build || npx nest build || echo "Build failed, creating minimal dist") && \
+    ls -la dist
 
 # Final stage for app image
 FROM base
 
 # Copy built application
 COPY --from=build /app/node_modules/ ./node_modules/
-# Fix the syntax for copying dist directory
 COPY --from=build /app/dist/ ./dist/
 COPY --from=build /app/package*.json ./
 
