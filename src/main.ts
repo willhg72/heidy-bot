@@ -11,6 +11,7 @@ async function bootstrap() {
     // Serve static files from the 'public' directory
     app.useStaticAssets(join(__dirname, '..', 'public'));
     
+    
     // Try a different port (3001 instead of the default 3000)
     const port = process.env.PORT || 3001;
     await app.listen(port);
