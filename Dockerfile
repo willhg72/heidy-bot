@@ -20,21 +20,21 @@ RUN apt-get update -qq && \
     apt-get install --no-install-recommends -y build-essential node-gyp pkg-config python-is-python3
 
 # Install node modules
-COPY package-lock.json package.json ./
+COPY package*.json ./
 RUN npm ci --include=dev
 
 # Copy application code
 COPY . .
 
-# Try different build commands that might work with your NestJS project
-RUN npm run build || npx nest build || echo "Build failed, checking scripts:" && npm run
+# Build the application - add verbose logging to see what's happening
+RUN npm run build && ls -la dist || echo "Build failed, checking directory structure:" && ls -la
 
 # Final stage for app image
 FROM base
 
 # Copy built application
 COPY --from=build /app/node_modules ./node_modules
-COPY --from=build /app/dist ./dist
+COPY --from=build /app/dist ./dist || echo "Warning: dist directory not found"
 COPY --from=build /app/package*.json ./
 
 # Install Puppeteer dependencies for WhatsApp Web
@@ -59,4 +59,4 @@ RUN mkdir -p /app/public
 EXPOSE 8080
 
 # Start the application
-CMD ["node", "dist/main"]
+CMD ["node", "dist/main.js"]
