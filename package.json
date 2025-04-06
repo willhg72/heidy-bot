@@ -8,7 +8,8 @@
   "scripts": {
     "build": "nest build",
     "start": "node dist/main.js",
-    "start:dev": "nest start --watch"
+    "start:dev": "nest start --watch",
+    "vercel-build": "nest build"
   },
   "dependencies": {
     "@nestjs/common": "^11.0.13",
@@ -27,8 +28,18 @@
     "@types/nodemailer": "^6.4.17"
   },
   "vercel": {
-    "buildCommand": "npm run build",
-    "installCommand": "npm install",
-    "framework": "node"
+    "version": 2,
+    "builds": [
+      {
+        "src": "dist/main.js",
+        "use": "@vercel/node"
+      }
+    ],
+    "routes": [
+      {
+        "src": "/(.*)",
+        "dest": "dist/main.js"
+      }
+    ]
   }
 }
